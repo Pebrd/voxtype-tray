@@ -4,44 +4,68 @@ set -euo pipefail
 REPO="pebrd/voxtype-tray"
 BINARY="voxtype-tray"
 INSTALL_DIR="${HOME}/.local/bin"
+GH_API="https://api.github.com/repos/$REPO/releases/latest"
+GH_DL="https://github.com/$REPO/releases/latest/download"
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 info()  { printf "\033[1;34m==>\033[0m %s\n" "$*"; }
 ok()    { printf "\033[1;32m ✓\033[0m %s\n" "$*"; }
 err()   { printf "\033[1;31m ✗\033[0m %s\n" "$*"; exit 1; }
+has()   { command -v "$1" &>/dev/null; }
 
-# ─── prerequisites ────────────────────────────────────────────────────────────
-info "Verificando dependencias..."
+# ─── detect target ────────────────────────────────────────────────────────────
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64) TARGET="x86_64-unknown-linux-gnu" ;;
+  aarch64|arm64) TARGET="aarch64-unknown-linux-gnu" ;;
+  *) err "Arquitectura no soportada: $ARCH" ;;
+esac
 
-if ! command -v cargo &>/dev/null; then
-    err "Rust no está instalado. https://rustup.rs/"
-fi
-
-if ! pkg-config --exists dbus-1 2>/dev/null; then
-    err "Falta libdbus-1-dev.\n  Debian/Ubuntu: sudo apt install libdbus-1-dev pkg-config\n  Arch:          sudo pacman -S dbus pkgconf\n  Fedora:        sudo dnf install dbus-devel pkgconfig"
-fi
-
-ok "Dependencias ok"
-
-# ─── temp work dir ────────────────────────────────────────────────────────────
+# ─── temp dir ─────────────────────────────────────────────────────────────────
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
-# ─── download & build ─────────────────────────────────────────────────────────
-info "Descargando $REPO..."
-git clone --depth=1 "https://github.com/$REPO.git" "$WORKDIR/$BINARY" 2>/dev/null || {
-    # fallback: descargar tarball
-    curl -sL "https://github.com/$REPO/archive/refs/heads/main.tar.gz" | tar xz -C "$WORKDIR"
-    mv "$WORKDIR/${BINARY}-main" "$WORKDIR/$BINARY"
-}
+# ─── intento 1: bajar binario pre-compilado ────────────────────────────────────
+DOWNLOAD_OK=0
+if has curl; then
+    info "Bajando $BINARY para $TARGET..."
+    ARCHIVE="$BINARY-$TARGET.tar.gz"
+    curl -sL "$GH_DL/$ARCHIVE" -o "$WORKDIR/$ARCHIVE" && \
+    curl -sL "$GH_DL/$ARCHIVE.sha256" -o "$WORKDIR/$ARCHIVE.sha256" && {
+        # verificar checksum
+        cd "$WORKDIR" && sha256sum -c "$ARCHIVE.sha256" &>/dev/null && {
+            tar xzf "$ARCHIVE" && chmod +x "$BINARY" && DOWNLOAD_OK=1
+            ok "Binario descargado"
+        } || info "Checksum falla, compilando desde fuente..."
+    } || info "No hay release, compilando desde fuente..."
+fi
 
-info "Compilando $BINARY (release)..."
-cargo build --release --manifest-path "$WORKDIR/$BINARY/Cargo.toml" 2>/dev/null
+# ─── intento 2: compilar desde fuente ──────────────────────────────────────────
+if [ "$DOWNLOAD_OK" != 1 ]; then
+    if ! has cargo; then
+        err "No se pudo descargar binario y Rust no está instalado. https://rustup.rs/"
+    fi
+    if ! pkg-config --exists dbus-1 2>/dev/null; then
+        err "Falta libdbus-1-dev.\n  Debian/Ubuntu: sudo apt install libdbus-1-dev pkg-config\n  Arch:          sudo pacman -S dbus pkgconf\n  Fedora:        sudo dnf install dbus-devel pkgconfig"
+    fi
 
-# ─── install binary ───────────────────────────────────────────────────────────
+    info "Clonando $REPO..."
+    git clone --depth=1 "https://github.com/$REPO.git" "$WORKDIR/$BINARY" 2>/dev/null || {
+        curl -sL "https://github.com/$REPO/archive/refs/heads/main.tar.gz" | tar xz -C "$WORKDIR"
+        mv "$WORKDIR/${BINARY}-main" "$WORKDIR/$BINARY"
+    }
+
+    info "Compilando $BINARY (release)..."
+    cargo build --release --manifest-path "$WORKDIR/$BINARY/Cargo.toml" 2>/dev/null
+    cp "$WORKDIR/$BINARY/target/release/$BINARY" "$WORKDIR/$BINARY"
+    chmod +x "$WORKDIR/$BINARY"
+    ok "Compilado desde fuente"
+fi
+
+# ─── instalar binario ─────────────────────────────────────────────────────────
 info "Instalando $BINARY en $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
-cp "$WORKDIR/$BINARY/target/release/$BINARY" "$INSTALL_DIR/$BINARY"
+cp "$WORKDIR/$BINARY" "$INSTALL_DIR/$BINARY"
 chmod +x "$INSTALL_DIR/$BINARY"
 ok "Binario instalado"
 
