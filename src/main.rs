@@ -19,13 +19,14 @@ enum VoxtypeState {
 }
 
 impl VoxtypeState {
+    /// Colores del systema Nox (github.com/pebrd/nox).
     fn color(&self) -> u32 {
         match self {
-            Self::Idle         => 0xFF4CAF50, // verde
-            Self::Recording    => 0xFFF44336, // rojo
-            Self::Transcribing => 0xFFFF9800, // ámbar
-            Self::Error        => 0xFF880000, // rojo oscuro
-            Self::Inactive     => 0xFF9E9E9E, // gris
+            Self::Idle         => 0xFF7EAB8A, // habit.green.sage
+            Self::Recording    => 0xFFC87070, // semantic.danger
+            Self::Transcribing => 0xFFC4A96A, // accent.yellow
+            Self::Error        => 0xFFA87070, // habit.red.brick
+            Self::Inactive     => 0xFF808080, // text.disabled
         }
     }
 
