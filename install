@@ -66,11 +66,10 @@ fi
 info "Instalando $BINARY en $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 
-# Detener servicio antes de reemplazar el binario
-if systemctl --user is-active --quiet "$BINARY" 2>/dev/null; then
-    info "Deteniendo $BINARY..."
-    systemctl --user stop "$BINARY"
-fi
+# Detener servicio y forzar reemplazo
+systemctl --user stop "$BINARY" 2>/dev/null || true
+# Si el binario está busy, rm libera el inodo
+rm -f "$INSTALL_DIR/$BINARY"
 
 cp "$WORKDIR/$BINARY" "$INSTALL_DIR/$BINARY"
 chmod +x "$INSTALL_DIR/$BINARY"
