@@ -65,6 +65,13 @@ fi
 # ─── instalar binario ─────────────────────────────────────────────────────────
 info "Instalando $BINARY en $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
+
+# Detener servicio antes de reemplazar el binario
+if systemctl --user is-active --quiet "$BINARY" 2>/dev/null; then
+    info "Deteniendo $BINARY..."
+    systemctl --user stop "$BINARY"
+fi
+
 cp "$WORKDIR/$BINARY" "$INSTALL_DIR/$BINARY"
 chmod +x "$INSTALL_DIR/$BINARY"
 ok "Binario instalado"
